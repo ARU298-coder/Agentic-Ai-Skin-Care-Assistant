@@ -2,63 +2,33 @@ from pathlib import Path
 
 import gradio as gr
 
-#from brain_of_the_doctor import brain_of_the_doctor
-from brain_of_the_doctor_groq import brain_of_the_doctor
-from voice_of_the_doctor import convert_text_to_doctor_audio
+from agent_graph import agent
 from voice_of_the_patient import transcribe_patient_voice
 
 
-APP_TITLE = "AI Skin Specialist"
+APP_TITLE = "Agentic AI Skin-Care Assistant"
+
 
 CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
 
 :root {
     --ais-bg: #f7f9fb;
     --ais-surface: #ffffff;
     --ais-surface-low: #f2f4f6;
-    --ais-surface-container: #eceef0;
     --ais-border: #c6c6cd;
-    --ais-border-strong: #76777d;
     --ais-text: #191c1e;
     --ais-muted: #45464d;
     --ais-primary: #0051d5;
-    --ais-primary-soft: #dbe1ff;
     --ais-primary-active: #316bf3;
-    --ais-danger: #ba1a1a;
-    --ais-danger-soft: #ffdad6;
     --ais-radius: 16px;
-    --body-background-fill: #f7f9fb;
-    --body-text-color: #191c1e;
-    --background-fill-primary: #ffffff;
-    --background-fill-secondary: #f2f4f6;
-    --block-background-fill: #ffffff;
-    --block-border-color: #c6c6cd;
-    --block-info-text-color: #45464d;
-    --block-label-background-fill: #ffffff;
-    --block-label-border-color: #c6c6cd;
-    --block-label-text-color: #45464d;
-    --input-background-fill: #ffffff;
-    --input-background-fill-focus: #ffffff;
-    --input-border-color: #c6c6cd;
-    --input-border-color-focus: #316bf3;
-    --input-placeholder-color: #76777d;
-    --button-primary-background-fill: #316bf3;
-    --button-primary-background-fill-hover: #0051d5;
-    --button-primary-text-color: #fefcff;
-    color-scheme: light;
 }
 
 .gradio-container {
     background: var(--ais-bg) !important;
     color: var(--ais-text) !important;
-    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif !important;
-}
-
-.gradio-container,
-.gradio-container * {
-    color-scheme: light !important;
+    font-family: Inter, -apple-system, BlinkMacSystemFont,
+                 "Segoe UI", system-ui, sans-serif !important;
 }
 
 .ais-shell {
@@ -82,53 +52,20 @@ CSS = """
     color: var(--ais-text);
     font-size: 24px;
     font-weight: 650;
-    letter-spacing: -0.01em;
-    line-height: 32px;
     margin: 0;
 }
 
-.ais-brand p,
-.ais-footer,
-.ais-note,
-.ais-panel-copy {
+.ais-brand p {
     color: var(--ais-muted);
     font-size: 12px;
     font-weight: 600;
-    letter-spacing: 0.03em;
-    line-height: 16px;
     margin: 4px 0 0;
 }
 
 .ais-security {
-    align-items: center;
     color: var(--ais-muted);
-    display: flex;
     font-size: 12px;
     font-weight: 600;
-    gap: 10px;
-}
-
-.ais-security span:not(.ais-icon),
-.ais-empty strong,
-.ais-panel-copy {
-    color: var(--ais-muted) !important;
-}
-
-.ais-empty strong {
-    color: var(--ais-text) !important;
-    display: block;
-    font-size: 18px;
-    font-weight: 650;
-    line-height: 28px;
-    margin-bottom: 6px;
-}
-
-.ais-icon {
-    color: var(--ais-primary);
-    font-family: 'Material Symbols Outlined';
-    font-size: 22px;
-    font-variation-settings: 'FILL' 0, 'wght' 450, 'GRAD' 0, 'opsz' 24;
-    line-height: 1;
 }
 
 .ais-grid {
@@ -139,17 +76,13 @@ CSS = """
 }
 
 .ais-section-title {
-    align-items: center;
-    display: flex;
-    gap: 8px;
-    margin: 0 0 14px;
+    margin-bottom: 14px;
 }
 
 .ais-section-title h2 {
     color: var(--ais-text);
     font-size: 24px;
     font-weight: 650;
-    line-height: 32px;
     margin: 0;
 }
 
@@ -167,15 +100,6 @@ CSS = """
     gap: 16px;
 }
 
-.ais-field-label {
-    color: var(--ais-muted);
-    display: block;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    margin-bottom: 12px;
-}
-
 .ais-media-row {
     display: grid;
     gap: 16px;
@@ -186,11 +110,10 @@ CSS = """
     background: var(--ais-primary-active) !important;
     border: 0 !important;
     border-radius: 16px !important;
-    box-shadow: 0 10px 24px rgba(0, 81, 213, 0.18) !important;
-    color: #fefcff !important;
+    color: white !important;
     font-size: 18px !important;
     font-weight: 650 !important;
-    min-height: 64px !important;
+    min-height: 58px !important;
 }
 
 .ais-submit-wrap .gr-button-primary:hover {
@@ -198,49 +121,16 @@ CSS = """
 }
 
 .ais-note {
-    align-items: flex-start;
-    background: rgba(219, 225, 255, 0.55);
+    background: #eef2ff;
     border-radius: 12px;
-    color: #003ea8 !important;
-    display: flex;
-    gap: 8px;
+    color: #003ea8;
+    font-size: 12px;
+    font-weight: 600;
     padding: 14px 16px;
-}
-
-.ais-note span:not(.ais-icon) {
-    color: #003ea8 !important;
-    font-weight: 650 !important;
-}
-
-.ais-note .ais-icon {
-    color: #0051d5 !important;
 }
 
 .ais-response-card {
     min-height: 590px;
-}
-
-.ais-empty {
-    align-items: center;
-    color: var(--ais-muted);
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    justify-content: center;
-    min-height: 170px;
-    text-align: center;
-}
-
-.ais-empty .ais-icon {
-    align-items: center;
-    background: var(--ais-surface-low);
-    border-radius: 999px;
-    color: var(--ais-border-strong);
-    display: inline-flex;
-    font-size: 42px;
-    height: 88px;
-    justify-content: center;
-    width: 88px;
 }
 
 .ais-output-stack {
@@ -253,8 +143,8 @@ CSS = """
     background: var(--ais-surface-low) !important;
     border: 0 !important;
     color: var(--ais-text) !important;
-    font-size: 16px !important;
-    line-height: 24px !important;
+    font-size: 15px !important;
+    line-height: 23px !important;
 }
 
 .ais-transcript textarea {
@@ -262,170 +152,19 @@ CSS = """
     font-style: italic;
 }
 
-.ais-audio {
-    border-top: 1px solid var(--ais-border);
-    padding-top: 18px;
+.ais-trace textarea {
+    font-family: monospace !important;
+    font-size: 13px !important;
 }
 
 .ais-footer {
-    align-items: center;
     background: var(--ais-surface-low);
     border: 1px solid var(--ais-border);
     border-radius: 16px;
-    display: flex;
-    justify-content: space-between;
+    color: var(--ais-muted);
+    font-size: 12px;
     margin-top: 32px;
     padding: 16px 20px;
-}
-
-.ais-footer strong {
-    color: var(--ais-text);
-}
-
-.ais-card .wrap,
-.ais-card .block,
-.ais-card .form,
-.ais-card .gradio-container,
-.ais-card .gradio-row {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-}
-
-.ais-card .gradio-audio,
-.ais-card .gradio-image,
-.ais-card .gradio-video,
-.ais-card .gradio-textbox {
-    background: transparent !important;
-    border: 0 !important;
-    color: var(--ais-text) !important;
-}
-
-.ais-card .gradio-audio > div,
-.ais-card .gradio-image > div,
-.ais-card .gradio-video > div,
-.ais-card .gradio-textbox > div {
-    background: var(--ais-surface-low) !important;
-    border: 1px solid var(--ais-border) !important;
-    border-radius: 12px !important;
-    color: var(--ais-text) !important;
-}
-
-.ais-card .gradio-audio [class*="container"],
-.ais-card .gradio-image [class*="container"],
-.ais-card .gradio-video [class*="container"],
-.ais-card .gradio-textbox [class*="container"],
-.ais-card .gradio-audio [class*="wrap"],
-.ais-card .gradio-image [class*="wrap"],
-.ais-card .gradio-video [class*="wrap"],
-.ais-card .gradio-textbox [class*="wrap"] {
-    background: var(--ais-surface-low) !important;
-    border-color: var(--ais-border) !important;
-    color: var(--ais-text) !important;
-}
-
-.ais-card .gradio-audio button,
-.ais-card .gradio-image button,
-.ais-card .gradio-video button,
-.ais-card .gradio-textbox button {
-    color: var(--ais-primary) !important;
-}
-
-.ais-card [data-testid="block-label"],
-.ais-card div[class*="block-label"],
-.ais-card label[class*="container"] {
-    background: var(--ais-surface) !important;
-    border-color: var(--ais-border) !important;
-    color: var(--ais-muted) !important;
-}
-
-.ais-card [data-testid="block-label"] *,
-.ais-card div[class*="block-label"] *,
-.ais-card label[class*="container"] * {
-    color: var(--ais-muted) !important;
-}
-
-.ais-card label span,
-.ais-output-stack label span {
-    color: var(--ais-muted) !important;
-    font-size: 12px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.05em !important;
-    text-transform: uppercase !important;
-}
-
-.ais-card input,
-.ais-card textarea,
-.ais-card select,
-.ais-card .upload-container,
-.ais-card .file-preview,
-.ais-card .input-container,
-.ais-card .dropzone,
-.ais-card .empty,
-.ais-card .icon-wrap,
-.ais-card video,
-.ais-card img {
-    background: var(--ais-surface-low) !important;
-    border-color: var(--ais-border) !important;
-    color: var(--ais-text) !important;
-    border-radius: 12px !important;
-}
-
-.ais-card input:disabled,
-.ais-card textarea:disabled,
-.ais-card [aria-disabled="true"],
-.ais-card .disabled {
-    background: var(--ais-surface-low) !important;
-    color: var(--ais-text) !important;
-    opacity: 1 !important;
-    -webkit-text-fill-color: var(--ais-text) !important;
-}
-
-.ais-card .upload-container,
-.ais-card .dropzone {
-    min-height: 220px !important;
-}
-
-.ais-card .gradio-audio .upload-container,
-.ais-card .gradio-audio .dropzone {
-    min-height: 120px !important;
-}
-
-.ais-media-row .gradio-image,
-.ais-media-row .gradio-video,
-.ais-media-row .gradio-image > div,
-.ais-media-row .gradio-video > div,
-.ais-media-row .gradio-image [class*="container"],
-.ais-media-row .gradio-video [class*="container"],
-.ais-media-row .gradio-image [class*="wrap"],
-.ais-media-row .gradio-video [class*="wrap"] {
-    min-height: 280px !important;
-    overflow: visible !important;
-}
-
-.ais-media-row .gradio-image .upload-container,
-.ais-media-row .gradio-video .upload-container,
-.ais-media-row .gradio-image .dropzone,
-.ais-media-row .gradio-video .dropzone {
-    height: 210px !important;
-    min-height: 210px !important;
-}
-
-.ais-media-row .gradio-image button,
-.ais-media-row .gradio-video button {
-    min-height: 36px !important;
-}
-
-.ais-card .upload-container *,
-.ais-card .file-preview *,
-.ais-card .input-container *,
-.ais-card .dropzone *,
-.ais-card .empty * {
-    color: var(--ais-text) !important;
-}
-
-.ais-card ::placeholder {
-    color: var(--ais-border-strong) !important;
 }
 
 @media (max-width: 900px) {
@@ -433,91 +172,220 @@ CSS = """
         padding: 20px;
     }
 
-    .ais-topbar,
-    .ais-footer {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 14px;
-    }
-
     .ais-grid,
     .ais-media-row {
         grid-template-columns: 1fr;
-    }
-
-    .ais-section-title h2 {
-        font-size: 22px;
-        line-height: 30px;
     }
 }
 """
 
 
-def process_inputs(audio_filepath, image_filepath, video_filepath):
-    if not audio_filepath:
-        raise gr.Error("Please record or upload your voice description first.")
+# ---------------------------------------------------------
+# MAIN PROCESSING FUNCTION
+# ---------------------------------------------------------
 
-    if not image_filepath and not video_filepath:
-        raise gr.Error("Please upload a skin image or video before analysis.")
+def process_inputs(
+    text_input_value,
+    audio_filepath,
+    image_filepath,
+    video_filepath
+):
 
-    patient_text = transcribe_patient_voice(audio_filepath)
-    doctor_text = brain_of_the_doctor(
-        patient_text=patient_text,
-        image_filepath=image_filepath,
-        video_filepath=video_filepath,
+    # -----------------------------------------------------
+    # 1. GET USER DESCRIPTION
+    # -----------------------------------------------------
+
+    if text_input_value and text_input_value.strip():
+
+        patient_text = text_input_value.strip()
+        input_method = "Typed text"
+
+    elif audio_filepath:
+
+        patient_text = transcribe_patient_voice(audio_filepath)
+        input_method = "Voice transcription"
+
+    else:
+
+        raise gr.Error(
+            "Please type your skin concern or record/upload "
+            "a voice description."
+        )
+
+    # -----------------------------------------------------
+    # 2. REQUIRE IMAGE
+    # -----------------------------------------------------
+
+    if not image_filepath:
+
+        raise gr.Error(
+            "Please upload a clear image of the affected skin area."
+        )
+
+    # -----------------------------------------------------
+    # 3. RUN LANGGRAPH AGENT
+    # -----------------------------------------------------
+
+    result = agent.invoke(
+        {
+            "user_text": patient_text,
+            "image_path": image_filepath,
+            "has_image": True,
+            "trace": [
+                f"Input -> {input_method} received"
+            ]
+        }
     )
-    doctor_audio = convert_text_to_doctor_audio(doctor_text)
 
-    return patient_text, doctor_text, str(Path(doctor_audio))
+    # -----------------------------------------------------
+    # 4. GET FINAL AGENT RESPONSE
+    # -----------------------------------------------------
 
+    doctor_text = result.get(
+        "final_response",
+        "The agent could not generate a response."
+    )
+
+    # -----------------------------------------------------
+    # 5. FORMAT AGENT EXECUTION TRACE
+    # -----------------------------------------------------
+
+    trace_steps = result.get("trace", [])
+
+    agent_trace = "\n".join(
+        f"✓ {step}"
+        for step in trace_steps
+    )
+
+    # -----------------------------------------------------
+    # 6. AUDIO TEMPORARILY DISABLED
+    # -----------------------------------------------------
+    # Deepgram TTS can be added back after
+    # DEEPGRAM_API_KEY is configured.
+
+    doctor_audio = None
+
+    return (
+        patient_text,
+        doctor_text,
+        agent_trace,
+        doctor_audio
+    )
+
+
+# ---------------------------------------------------------
+# GRADIO UI
+# ---------------------------------------------------------
 
 with gr.Blocks(title=APP_TITLE) as iface:
+
     with gr.Column(elem_classes="ais-shell"):
+
+        # -------------------------------------------------
+        # HEADER
+        # -------------------------------------------------
+
         gr.HTML(
             """
             <header class="ais-topbar">
+
                 <div class="ais-brand">
-                    <h1>AI Skin Specialist</h1>
-                    <p>VOICE, IMAGE, AND VIDEO BASED SKIN CONSULTATION ASSISTANT</p>
+                    <h1>Agentic AI Skin-Care Assistant</h1>
+
+                    <p>
+                    MULTIMODAL LANGGRAPH AGENT WITH
+                    VISION ANALYSIS AND SAFETY TRIAGE
+                    </p>
                 </div>
+
                 <div class="ais-security">
-                    <span class="ais-icon">security</span>
-                    <span>Privacy-first consultation</span>
+                    Safety-aware Agentic AI
                 </div>
+
             </header>
             """
         )
 
+        # -------------------------------------------------
+        # MAIN GRID
+        # -------------------------------------------------
+
         with gr.Row(elem_classes="ais-grid"):
+
+            # =============================================
+            # LEFT SIDE - USER INPUT
+            # =============================================
+
             with gr.Column(scale=5):
+
                 gr.HTML(
                     """
                     <div class="ais-section-title">
-                        <span class="ais-icon">clinical_notes</span>
                         <h2>Patient Input</h2>
                     </div>
                     """
                 )
 
-                with gr.Column(elem_classes="ais-card ais-input-card"):
-                    gr.HTML('<span class="ais-field-label">Describe your skin concern</span>')
-                    audio_input = gr.Audio(
-                        sources=["microphone", "upload"],
-                        type="filepath",
-                        label="Patient Voice",
+                with gr.Column(
+                    elem_classes="ais-card ais-input-card"
+                ):
+
+                    # -------------------------------------
+                    # TEXT INPUT
+                    # -------------------------------------
+
+                    text_input = gr.Textbox(
+                        label="Type Your Skin Concern",
+                        placeholder=(
+                            "Example: I have red itchy patches "
+                            "that started two days ago after "
+                            "using a new face wash."
+                        ),
+                        lines=4,
                     )
 
-                    with gr.Row(elem_classes="ais-media-row"):
+                    # -------------------------------------
+                    # VOICE INPUT
+                    # -------------------------------------
+
+                    audio_input = gr.Audio(
+                        sources=[
+                            "microphone",
+                            "upload"
+                        ],
+                        type="filepath",
+                        label="Or Describe It By Voice",
+                    )
+
+                    # -------------------------------------
+                    # IMAGE / VIDEO
+                    # -------------------------------------
+
+                    with gr.Row(
+                        elem_classes="ais-media-row"
+                    ):
+
                         image_input = gr.Image(
                             type="filepath",
                             label="Skin Image",
                             height=280,
                         )
-                        video_input = gr.Video(label="Skin Video", height=280)
 
-                    with gr.Column(elem_classes="ais-submit-wrap"):
+                        video_input = gr.Video(
+                            label="Skin Video",
+                            height=280,
+                        )
+
+                    # -------------------------------------
+                    # ANALYZE BUTTON
+                    # -------------------------------------
+
+                    with gr.Column(
+                        elem_classes="ais-submit-wrap"
+                    ):
+
                         analyze_button = gr.Button(
-                            "Analyze Concern",
+                            "Run Agentic Analysis",
                             variant="primary",
                             size="lg",
                         )
@@ -525,78 +393,148 @@ with gr.Blocks(title=APP_TITLE) as iface:
                     gr.HTML(
                         """
                         <div class="ais-note">
-                            <span class="ais-icon">info</span>
-                            <span>For better assessment, include a short video showing the affected area from multiple angles and under good lighting.</span>
+
+                            The AI agent analyzes the image,
+                            evaluates the available context,
+                            and dynamically routes the request
+                            through LOW, UNCERTAIN, or RED FLAG
+                            safety paths.
+
                         </div>
                         """
                     )
 
+            # =============================================
+            # RIGHT SIDE - AGENT OUTPUT
+            # =============================================
+
             with gr.Column(scale=7):
+
                 gr.HTML(
                     """
                     <div class="ais-section-title">
-                        <span class="ais-icon">smart_toy</span>
-                        <h2>Doctor Response</h2>
+                        <h2>Agent Response</h2>
                     </div>
                     """
                 )
 
-                with gr.Column(elem_classes="ais-card ais-response-card"):
-                    gr.HTML(
-                        """
-                        <div class="ais-empty">
-                            <span class="ais-icon">pending_actions</span>
-                            <div>
-                                <strong>Ready for Analysis</strong>
-                                <p class="ais-panel-copy">Your consultation summary, transcript, and guidance will appear below after analysis.</p>
-                            </div>
-                        </div>
-                        """
-                    )
+                with gr.Column(
+                    elem_classes="ais-card ais-response-card"
+                ):
 
-                    with gr.Column(elem_classes="ais-output-stack"):
+                    with gr.Column(
+                        elem_classes="ais-output-stack"
+                    ):
+
+                        # ---------------------------------
+                        # USER TEXT
+                        # ---------------------------------
+
                         transcript_output = gr.Textbox(
-                            label="Your Speech Transcript",
+                            label="Patient Description",
                             lines=4,
                             interactive=False,
                             elem_classes="ais-transcript",
                         )
+
+                        # ---------------------------------
+                        # FINAL GUIDANCE
+                        # ---------------------------------
+
                         response_output = gr.Textbox(
-                            label="Doctor's Guidance",
+                            label="Skin-Care Guidance",
                             lines=9,
                             interactive=False,
                         )
+
+                        # ---------------------------------
+                        # AGENT TRACE
+                        # ---------------------------------
+
+                        agent_trace_output = gr.Textbox(
+                            label="Agent Execution Trace",
+                            lines=9,
+                            interactive=False,
+                            elem_classes="ais-trace",
+                        )
+
+                        # ---------------------------------
+                        # AUDIO OUTPUT
+                        # ---------------------------------
+
                         audio_output = gr.Audio(
-                            label="Doctor Voice Response",
+                            label="Voice Response",
                             type="filepath",
-                            autoplay=True,
-                            elem_classes="ais-audio",
+                            autoplay=False,
                         )
 
                 gr.HTML(
                     """
-                    <div class="ais-security" style="justify-content:center; margin-top:16px;">
-                        <span class="ais-icon">verified</span>
-                        <span>AI guidance is informational and not a medical diagnosis</span>
+                    <div
+                        class="ais-security"
+                        style="
+                            justify-content:center;
+                            margin-top:16px;
+                        "
+                    >
+                        AI guidance is informational and
+                        is not a medical diagnosis.
                     </div>
                     """
                 )
 
+        # -------------------------------------------------
+        # FOOTER
+        # -------------------------------------------------
+
         gr.HTML(
             """
             <footer class="ais-footer">
-                <div><strong>AI Skin Specialist</strong><br/>Consult a licensed dermatologist for urgent or serious symptoms.</div>
-                <div>Privacy Policy · Terms of Service · Medical Disclaimer</div>
+
+                <strong>
+                    Agentic AI Skin-Care Assistant
+                </strong>
+
+                <br>
+
+                For urgent or serious symptoms,
+                seek appropriate professional medical care.
+
             </footer>
             """
         )
 
+    # -----------------------------------------------------
+    # BUTTON EVENT
+    # -----------------------------------------------------
+
     analyze_button.click(
         fn=process_inputs,
-        inputs=[audio_input, image_input, video_input],
-        outputs=[transcript_output, response_output, audio_output],
+
+        inputs=[
+            text_input,
+            audio_input,
+            image_input,
+            video_input,
+        ],
+
+        outputs=[
+            transcript_output,
+            response_output,
+            agent_trace_output,
+            audio_output,
+        ],
     )
 
 
+# ---------------------------------------------------------
+# START APPLICATION
+# ---------------------------------------------------------
+
 if __name__ == "__main__":
-    iface.launch(debug=True, css=CSS, theme=gr.themes.Base())
+
+    iface.launch(
+        debug=True,
+        css=CSS,
+        theme=gr.themes.Base(),
+    )

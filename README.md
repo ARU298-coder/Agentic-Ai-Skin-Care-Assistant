@@ -1,383 +1,547 @@
-# AI Skin Specialist
+# Agentic AI Skin-Care Assistant
 
-AI Skin Specialist is a Gradio-based consultation assistant that accepts a patient voice description plus a skin image or video, transcribes the patient audio, sends the visual/text context to an AI model, and returns both a written and spoken doctor-style response.
+A multimodal Agentic AI application that analyzes a user's skin concern using text or voice input together with an uploaded image.
 
-The current app uses:
+The system uses **LangGraph** to orchestrate a stateful workflow. Instead of sending every request through one fixed LLM pipeline, the agent analyzes tool outputs and dynamically routes the request through different safety paths.
 
-- Gradio for the web interface.
-- Groq Whisper for patient voice transcription.
-- Groq vision model for image-based skin guidance.
-- Deepgram text-to-speech for the doctor audio response.
-- `uv` for Python version, virtual environment, dependency, and lockfile management.
+> This project provides general informational skin-care guidance only. It is not a medical diagnostic system and does not replace professional medical care.
 
-Important: this project provides general informational guidance only. It is not a medical diagnosis and should not replace care from a licensed dermatologist or clinician.
+---
+
+## Agentic AI Architecture
+
+```text
+User
+ │
+ ├── Typed Text
+ │
+ └── Voice
+       │
+       ▼
+ Speech-to-Text
+       │
+       ▼
+ ┌──────────────┐
+ │  LangGraph   │
+ │ Agent State  │
+ └──────┬───────┘
+        │
+        ▼
+      Router
+        │
+        ▼
+   Vision Tool
+   (Groq Vision)
+        │
+        ▼
+    AI Triage
+        │
+   ┌────┼─────────┐
+   │    │         │
+   ▼    ▼         ▼
+  LOW UNCERTAIN RED_FLAG
+   │    │         │
+   ▼    ▼         ▼
+General Ask for  Escalation
+Guidance More Info
+   │    │         │
+   └────┼─────────┘
+        ▼
+   Final Response
+```
+
+---
+
+## What Makes It Agentic?
+
+The original multimodal workflow followed a fixed sequence:
+
+```text
+Voice → Transcription → Vision Model → Response
+```
+
+This project extends that architecture with a **stateful LangGraph agent**.
+
+The agent can:
+
+- Maintain shared workflow state using `AgentState`
+- Select an image or text analysis route
+- Invoke a multimodal vision tool
+- Observe the vision tool's output
+- Reason over both the user's description and visual analysis
+- Classify the situation into `LOW`, `UNCERTAIN`, or `RED_FLAG`
+- Dynamically choose the next node using LangGraph conditional edges
+- Request additional information when evidence is insufficient
+- Route concerning cases to an escalation path
+- Expose an execution trace showing the agent's decisions
+
+---
+
+## Agent Workflow
+
+### 1. User Input
+
+The user can either:
+
+- Type a description of the skin concern
+- Provide a voice description
+
+A skin image is then uploaded for visual analysis.
+
+### 2. Agent State
+
+LangGraph maintains shared state across the workflow.
+
+Example state:
+
+```python
+class AgentState(TypedDict, total=False):
+    user_text: str
+    image_path: str
+    has_image: bool
+    image_analysis: str
+    risk_level: str
+    route: str
+    final_response: str
+    trace: list[str]
+```
+
+This allows different nodes to read previous observations and add new information.
+
+### 3. Router
+
+The router determines which processing path should be used based on the available input.
+
+For an uploaded image:
+
+```text
+Router → Image Analysis
+```
+
+### 4. Vision Tool
+
+The image-analysis node calls the Groq multimodal model.
+
+The tool receives:
+
+```text
+User description + Uploaded image
+```
+
+and returns visual observations and general informational guidance.
+
+The result is stored in:
+
+```python
+state["image_analysis"]
+```
+
+### 5. AI Triage
+
+The triage node reasons over:
+
+```text
+User Description
+        +
+Vision Tool Result
+```
+
+It returns structured output containing a risk classification and reason.
+
+Example:
+
+```json
+{
+  "risk_level": "UNCERTAIN",
+  "reason": "The uploaded image does not clearly show the affected skin area."
+}
+```
+
+Possible classifications:
+
+```text
+LOW
+UNCERTAIN
+RED_FLAG
+```
+
+### 6. Conditional Routing
+
+LangGraph conditional edges determine which node executes next.
+
+```text
+LOW
+ ↓
+General informational guidance
+
+UNCERTAIN
+ ↓
+Request additional information
+
+RED_FLAG
+ ↓
+Escalation guidance
+```
+
+This conditional decision-making is the core agentic behavior of the system.
+
+---
+
+## Example Agent Execution Trace
+
+The Gradio interface exposes the workflow execution so the routing can be inspected during a demo.
+
+```text
+✓ Input -> Typed text received
+✓ Router -> Image analysis selected
+✓ Vision Tool -> Analyzing uploaded skin image
+✓ Vision Tool -> Analysis completed
+✓ AI Triage -> LOW: No obvious urgent warning signs detected
+✓ Safety -> Standard guidance path
+```
+
+For insufficient evidence:
+
+```text
+✓ Vision Tool -> Analysis completed
+✓ AI Triage -> UNCERTAIN: Image is insufficient for reliable assessment
+✓ Agent -> Additional information requested
+```
+
+For a concerning input:
+
+```text
+✓ Vision Tool -> Analysis completed
+✓ AI Triage -> RED_FLAG: Potential urgent warning signs identified
+✓ Safety -> Escalation path selected
+```
+
+---
+
+## Three Agent Paths
+
+### LOW
+
+Used when the available information does not indicate obvious urgent warning signs.
+
+```text
+Vision Analysis
+      ↓
+AI Triage
+      ↓
+LOW
+      ↓
+General Skin-Care Guidance
+```
+
+### UNCERTAIN
+
+Used when the agent does not have enough reliable information.
+
+For example:
+
+- Irrelevant image
+- Unclear image
+- Insufficient description
+- Visual evidence does not match the user context
+
+```text
+Vision Analysis
+      ↓
+AI Triage
+      ↓
+UNCERTAIN
+      ↓
+Ask User for More Information
+```
+
+The system avoids guessing when the available evidence is insufficient.
+
+### RED_FLAG
+
+Used when the supplied information suggests potentially urgent symptoms.
+
+```text
+User Input
+      ↓
+Vision Analysis
+      ↓
+AI Triage
+      ↓
+RED_FLAG
+      ↓
+Escalation Path
+```
+
+Routine skin-care guidance is skipped and the user is directed toward appropriate professional evaluation.
+
+---
+
+## Tech Stack
+
+| Technology | Purpose |
+|---|---|
+| Python | Core application |
+| LangGraph | Agent orchestration and conditional routing |
+| Groq | LLM and multimodal vision inference |
+| Qwen Vision | Image + text analysis |
+| Gradio | Interactive web interface |
+| Groq Whisper | Speech-to-text |
+| Pillow | Image preprocessing |
+| python-dotenv | Environment variable management |
+
+---
 
 ## Project Structure
 
 ```text
 ai-skin-specialist/
-|-- main.py                     # Gradio application entry point
-|-- voice_of_the_patient.py     # Microphone recording helper and Groq transcription
-|-- brain_of_the_doctor_groq.py # Groq vision/text response generation used by main.py
-|-- brain_of_the_doctor.py      # Alternative MiniMax/Anthropic-compatible implementation
-|-- voice_of_the_doctor.py      # Deepgram text-to-speech audio generation
-|-- free_text_to_speech.py      # Additional text-to-speech experiment/helper
-|-- sample.env                  # Environment variable template
-|-- pyproject.toml              # Python package metadata and dependencies
-|-- uv.lock                     # Locked dependency versions generated by uv
-|-- .python-version             # Python version requested by uv/pyenv-style tools
-`-- README.md
+│
+├── agent_graph.py
+│   └── LangGraph state, nodes, routing and agent workflow
+│
+├── main.py
+│   └── Gradio interface and LangGraph integration
+│
+├── brain_of_the_doctor_groq.py
+│   └── Groq multimodal vision tool
+│
+├── voice_of_the_patient.py
+│   └── Voice transcription
+│
+├── voice_of_the_doctor.py
+│   └── Optional text-to-speech functionality
+│
+├── pyproject.toml
+│   └── Python dependencies
+│
+├── sample.env
+│   └── Environment-variable template
+│
+├── .gitignore
+│   └── Protects API keys and local environment files
+│
+└── README.md
 ```
 
-## Requirements
+---
 
-- Python 3.11 or newer.
-- `uv` package manager.
-- FFmpeg for audio conversion/playback support used by `pydub` and media tooling.
-- PortAudio for microphone/audio support used by `pyaudio` and `speech_recognition`.
-- API keys for Groq and Deepgram.
+## Installation
 
-## Install System Dependencies
-
-Install FFmpeg and PortAudio before syncing Python dependencies. This avoids common `pyaudio`, microphone, and audio conversion errors.
-
-### macOS
-
-Using Homebrew:
+### 1. Clone the repository
 
 ```bash
-brew update
-brew install ffmpeg portaudio
+git clone <your-repository-url>
+cd ai-skin-specialist
 ```
 
-Verify installation:
+### 2. Create a virtual environment
+
+macOS/Linux:
 
 ```bash
-ffmpeg -version
-brew list portaudio
+python3 -m venv venv
+source venv/bin/activate
 ```
 
-If `pyaudio` fails to build, make sure Homebrew's PortAudio is discoverable:
+Windows:
 
 ```bash
-brew --prefix portaudio
+python -m venv venv
+venv\Scripts\activate
 ```
 
-On Apple Silicon, Homebrew is usually under `/opt/homebrew`. On Intel Macs, it is usually under `/usr/local`.
-
-### Windows
-
-Recommended option using Chocolatey from an Administrator PowerShell:
-
-```powershell
-choco install ffmpeg portaudio
-```
-
-Alternative option using Scoop:
-
-```powershell
-scoop install ffmpeg
-scoop install portaudio
-```
-
-Verify FFmpeg:
-
-```powershell
-ffmpeg -version
-```
-
-Notes for Windows:
-
-- Restart your terminal after installing FFmpeg so `PATH` changes are picked up.
-- If `pyaudio` installation fails, install Microsoft C++ Build Tools from `https://visualstudio.microsoft.com/visual-cpp-build-tools/`, then run `uv sync` again.
-- Some Windows setups can install `pyaudio` from a prebuilt wheel automatically. If not, PortAudio and C++ build tools are usually the missing pieces.
-
-### Linux
-
-Ubuntu/Debian:
+### 3. Install dependencies
 
 ```bash
-sudo apt update
-sudo apt install ffmpeg portaudio19-dev python3-dev build-essential
+pip install .
 ```
 
-Fedora:
+On macOS, if PyAudio fails because PortAudio is missing:
 
 ```bash
-sudo dnf install ffmpeg portaudio-devel python3-devel gcc gcc-c++ make
+brew install portaudio
 ```
 
-Arch Linux:
+Then:
 
 ```bash
-sudo pacman -S ffmpeg portaudio base-devel
+pip install pyaudio
+pip install .
 ```
 
-Verify installation:
-
-```bash
-ffmpeg -version
-```
-
-If microphone access fails on Linux, also confirm your audio stack is working and that the current user has access to the input device.
-
-## Install uv
-
-`uv` is the recommended way to create the virtual environment, install dependencies, and run the app.
-
-### macOS and Linux
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Restart your terminal, or load the environment update printed by the installer. Then verify:
-
-```bash
-uv --version
-```
-
-### Windows
-
-In PowerShell:
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Restart PowerShell, then verify:
-
-```powershell
-uv --version
-```
-
-Alternative installation methods are also available:
-
-```bash
-pipx install uv
-```
-
-or:
-
-```bash
-pip install uv
-```
-
-## Setup
-
-Clone or open the project folder, then run:
-
-```bash
-uv sync
-```
-
-This command reads `pyproject.toml` and `uv.lock`, creates `.venv` if needed, installs Python 3.11 if your uv setup supports managed Python downloads, and installs all locked dependencies.
-
-If you need to force uv to use Python 3.11 explicitly:
-
-```bash
-uv python install 3.11
-uv sync --python 3.11
-```
+---
 
 ## Environment Variables
 
-Create a `.env` file in the project root. You can copy the included template:
+Create a `.env` file in the project root:
 
-```bash
-cp sample.env .env
-```
-
-Then fill in the values:
-
-```bash
+```text
 GROQ_API_KEY=your_groq_api_key_here
-DEEPGRAM_API_KEY=your_deepgram_api_key_here
-
-# Optional model overrides
-WHISPER_MODEL=whisper-large-v3
-GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
-DEEPGRAM_TTS_MODEL=aura-2-thalia-en
-
-# Optional only if using brain_of_the_doctor.py instead of brain_of_the_doctor_groq.py
-MINIMAX_API_KEY=your_minimax_api_key_here
-MINIMAX_BASE_URL=https://api.minimax.io/anthropic
-MINIMAX_MODEL=MiniMax-M3
 ```
 
-Required for the default `main.py` flow:
+Never commit `.env` to GitHub.
 
-- `GROQ_API_KEY` for audio transcription and image analysis.
-- `DEEPGRAM_API_KEY` for generating the doctor voice response.
+The repository's `.gitignore` excludes:
 
-Do not commit real API keys to version control.
+```text
+.env
+venv/
+__pycache__/
+*.pyc
+```
 
-## Run the App
+---
 
-Use `uv run` so the command executes inside the project environment:
+## Run the Application
 
 ```bash
-uv run python main.py
+python main.py
 ```
 
-Gradio will print a local URL, usually:
+Gradio will display a local URL such as:
 
 ```text
 http://127.0.0.1:7860
 ```
 
-Open that URL in your browser.
+Open it in your browser.
 
-## How to Use
+---
 
-1. Record or upload a patient voice description.
-2. Upload a skin image. The current Groq implementation requires an image.
-3. Optionally upload a skin video. The current Groq implementation does not process video directly and uses the image as the visual reference.
-4. Click `Analyze Concern`.
-5. Review the transcript, doctor guidance, and generated audio response.
+## Using the Application
 
-## uv Commands
+1. Type a skin concern or provide a voice description.
+2. Upload a clear image of the affected area.
+3. Click **Run Agentic Analysis**.
+4. Review the skin-care guidance.
+5. Inspect the **Agent Execution Trace** to see which nodes and routing path were executed.
 
-Common commands for this project:
+---
 
-```bash
-# Create/update the virtual environment from pyproject.toml and uv.lock
-uv sync
+## Demo Scenarios
 
-# Run the Gradio app
-uv run python main.py
+### Normal / LOW Case
 
-# Run an individual module or script
-uv run python voice_of_the_patient.py
+Example input:
 
-# Add a dependency
-uv add package-name
-
-# Add a development dependency
-uv add --dev package-name
-
-# Remove a dependency
-uv remove package-name
-
-# Update the lockfile without installing
-uv lock
-
-# Upgrade dependencies within allowed version ranges
-uv lock --upgrade
-
-# Show installed packages in the environment
-uv pip list
-
-# Show dependency tree
-uv tree
+```text
+I have red itchy patches that started two days ago after using
+a new face wash. There is no severe pain, facial swelling,
+fever, or difficulty breathing.
 ```
 
-You normally do not need to manually activate the virtual environment when using `uv run`. If you want to activate it anyway:
+Expected path:
 
-macOS/Linux:
-
-```bash
-source .venv/bin/activate
+```text
+Vision Tool → AI Triage → LOW → Guidance
 ```
 
-Windows PowerShell:
+### UNCERTAIN Case
 
-```powershell
-.venv\Scripts\Activate.ps1
+Upload an irrelevant or unclear image.
+
+Expected path:
+
+```text
+Vision Tool → AI Triage → UNCERTAIN → Request More Information
 ```
 
-Windows Command Prompt:
+### RED FLAG Case
 
-```cmd
-.venv\Scripts\activate.bat
+Example input:
+
+```text
+My rash is spreading very rapidly. My face and lips are
+swelling and I am having difficulty breathing.
 ```
 
-Deactivate with:
+Expected path:
 
-```bash
-deactivate
+```text
+Vision Tool → AI Triage → RED_FLAG → Escalation
 ```
 
-## Python Dependencies
+---
 
-The main dependencies are listed in `pyproject.toml`:
+## Key Engineering Concepts Demonstrated
 
-- `gradio` for the web app.
-- `groq` for Whisper transcription and the vision/chat model.
-- `deepgram-sdk` for text-to-speech.
-- `anthropic` for the alternate MiniMax-compatible implementation.
-- `python-dotenv` for loading `.env` values.
-- `pydub`, `pyaudio`, `sounddevice`, and `speechrecognition` for audio recording and conversion.
-- `pillow` for image resizing and encoding before sending to Groq.
-- `numpy` and `path` as supporting dependencies.
+### Agentic AI
 
-Because this project includes `uv.lock`, prefer `uv sync` over `pip install -r requirements.txt`. There is no `requirements.txt` in the current project.
+The system does not simply generate a response from one prompt. It observes tool results and selects subsequent actions.
 
-## Development Notes
+### Tool Calling
 
-- `main.py` currently imports `brain_of_the_doctor` from `brain_of_the_doctor_groq.py`.
-- `brain_of_the_doctor_groq.py` requires an image input. If only a video is uploaded, the app validation passes, but Groq vision will raise an error because no image was provided.
-- `brain_of_the_doctor.py` contains an alternate MiniMax/Anthropic-compatible path that can encode either image or video, but it is not the active import in `main.py`.
-- Generated audio is written to `doctor_response.mp3` by default.
-- Gradio launches with `debug=True` in `main.py`.
+The LangGraph image-analysis node invokes the external Groq multimodal capability and stores its result in agent state.
 
-## Troubleshooting
+### Stateful Orchestration
 
-### `ffmpeg` not found
+`AgentState` allows observations and decisions to persist between graph nodes during execution.
 
-Install FFmpeg using the instructions for your operating system, restart your terminal, and verify:
+### Conditional Edges
 
-```bash
-ffmpeg -version
-```
+LangGraph routes execution dynamically according to the triage result.
 
-### `pyaudio` fails to install
+### Multimodal AI
 
-This usually means PortAudio headers or build tools are missing.
+The system combines natural-language descriptions with visual information from uploaded images.
 
-- macOS: run `brew install portaudio`.
-- Windows: install PortAudio and Microsoft C++ Build Tools, then run `uv sync` again.
-- Ubuntu/Debian: run `sudo apt install portaudio19-dev python3-dev build-essential`.
-- Fedora: run `sudo dnf install portaudio-devel python3-devel gcc gcc-c++ make`.
-- Arch: run `sudo pacman -S portaudio base-devel`.
+### Structured LLM Output
 
-### Microphone is not detected
+The triage component returns structured risk classification data that can be consumed programmatically by the graph.
 
-- Check operating system microphone permissions.
-- Close other apps that may be using the microphone.
-- Confirm your browser has microphone permission for the Gradio local URL.
-- Confirm PortAudio is installed.
+### Observability
 
-### Missing API key errors
+The application displays an Agent Execution Trace showing which tools, nodes, and routing decisions were executed.
 
-Make sure `.env` exists in the project root and contains at least:
+### Safety-Aware Routing
 
-```bash
-GROQ_API_KEY=your_groq_api_key_here
-DEEPGRAM_API_KEY=your_deepgram_api_key_here
-```
+Potentially concerning cases take an escalation path instead of receiving ordinary skin-care guidance.
 
-Then run the app from the project root:
+---
 
-```bash
-uv run python main.py
-```
+## Example Interview Explanation
 
-### Deepgram audio generation fails
+> I started with a multimodal skin-care assistant that followed a fixed voice-to-vision-to-response pipeline. I redesigned its orchestration layer using LangGraph. I introduced shared agent state, converted the vision capability into a callable tool, and built an AI triage node that reasons over both the user's description and the vision tool output. LangGraph conditional edges then dynamically route execution between normal guidance, clarification, and escalation paths. I also exposed the execution trace in the Gradio interface so the agent's decisions are observable during a live demo.
 
-Check that `DEEPGRAM_API_KEY` is valid and that the selected `DEEPGRAM_TTS_MODEL` is available for your account.
+---
 
-### Groq image analysis fails
+## Current Limitations
 
-Check that `GROQ_API_KEY` is valid and that `GROQ_MODEL` supports image input. The default implementation converts the uploaded image to JPEG, resizes it to fit within `1024x1024`, and sends it as a base64 data URL.
+- The application provides informational guidance rather than medical diagnosis.
+- Image-analysis quality depends on image clarity and the underlying multimodal model.
+- The triage layer is an AI safety-routing mechanism and is not a validated clinical triage system.
+- Video processing is not currently part of the active agent workflow.
+- Text-to-speech is optional and may require an additional API configuration.
+
+---
+
+## Future Improvements
+
+Potential extensions include:
+
+- Conversation memory using LangGraph persistence
+- Retrieval-Augmented Generation using trusted dermatology resources
+- Human-in-the-loop review
+- More sophisticated tool selection
+- Agent evaluation datasets
+- Confidence-based routing
+- Persistent session history
+- Additional multimodal tools
+
+---
 
 ## Security
 
-- Keep `.env` private.
-- Do not commit real API keys.
-- Be careful with patient images, videos, and audio files. Treat them as sensitive data.
-- This repository includes sample media files for local testing, but production use should define a clear data retention and privacy policy.
+- API keys are stored in `.env`.
+- `.env` is excluded through `.gitignore`.
+- API keys should never be committed to GitHub.
+- Images and voice recordings should be treated as potentially sensitive user data.
 
-## Medical Disclaimer
+---
 
-This app is an AI assistant for general skin care information. It cannot diagnose disease, prescribe medication, or replace a medical professional. For severe symptoms, rapid spreading, fever, pain, bleeding, infection signs, or urgent concerns, contact a licensed clinician immediately.
+## Disclaimer
+
+This project is an educational Agentic AI demonstration.
+
+It provides general informational guidance only and does not diagnose medical conditions, prescribe medication, or replace evaluation by a qualified healthcare professional.
